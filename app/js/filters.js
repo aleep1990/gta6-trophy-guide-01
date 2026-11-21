@@ -1,42 +1,45 @@
-// Leonida Ledger — filtering, search and the spoiler rule.
-// Spoilers ON hides a hidden trophy's name, description and guide until it is earned.
-// Search covers names, descriptions, guides and kinds.
+// filters.js — kind chips and the checklist filter (search, grade, kind, earned, spoilers).
+export const KIND_CHIPS = [
+  { id: '', label: 'All kinds' },
+  { id: 'story', label: 'Story' },
+  { id: 'missable', label: 'Missable' },
+  { id: 'collectible', label: 'Collectibles' },
+  { id: 'activity', label: 'Activities' },
+  { id: 'robbery', label: 'Robberies' },
+  { id: 'side', label: 'Side quests' },
+  { id: 'hidden', label: 'Hidden' },
+  { id: 'unconfirmed', label: 'Unconfirmed' },
+];
 
-export function isSpoilerHidden(trophy, state) {
-  return state.spoilers && trophy.hidden && !state.earned.includes(trophy.id);
+export function hasUnconfirmed(trophy) {
+  return (trophy.claims || []).some((c) => c.st === 'u');
 }
 
-export function applyFilters(trophies, state) {
-  const { grade, kind, query, onlyUnearned, onlyMissable } = state.filters;
-  const q = query.trim().toLowerCase();
-  return trophies.filter((t) => {
-    if (grade !== 'all' && t.grade !== grade) return false;
-    if (kind !== 'all' && t.kind !== kind) return false;
-    if (onlyUnearned && state.earned.includes(t.id)) return false;
-    if (onlyMissable && !t.missable) return false;
+export function isSpoilerHidden(trophy, state) {
+  return state.spoilers && trophy.hidden && !state.earned[trophy.id];
+}
+
+export function filterTrophies(guide, state, query) {
+  const q = (query.search || '').trim().toLowerCase();
+  return guide.trophies.filter((t) => {
+    if (query.grade && t.grade !== query.grade) return false;
+    if (query.earned === 'earned' && !state.earned[t.id]) return false;
+    if (query.earned === 'unearned' && state.earned[t.id]) return false;
+    switch (query.kind) {
+      case 'story': if (t.kind !== 'story') return false; break;
+      case 'missable': if (!t.missable) return false; break;
+      case 'collectible': if (t.kind !== 'collectible') return false; break;
+      case 'activity': if (t.kind !== 'activity') return false; break;
+      case 'robbery': if (t.kind !== 'robbery') return false; break;
+      case 'side': if (t.kind !== 'side') return false; break;
+      case 'hidden': if (!t.hidden) return false; break;
+      case 'unconfirmed': if (!hasUnconfirmed(t)) return false; break;
+      default: break;
+    }
     if (q) {
-      const haystack = [t.name, t.description, t.guide, t.kind, t.missable_note].join(' ').toLowerCase();
-      if (!haystack.includes(q)) return false;
+      const hay = (t.name + ' ' + t.description + ' ' + t.guide).toLowerCase();
+      if (!hay.includes(q)) return false;
     }
     return true;
   });
-}
-
-// Next-up planner: story beats first (in story order), then quick single-action wins,
-// then short grinds, then the rest by grade. Deterministic, so the same save always
-// suggests the same next trophies.
-export function planNextUp(trophies, state, limit) {
-  const earned = new Set(state.earned);
-  const rest = trophies.filter((t) => !earned.has(t.id));
-  const story = rest.filter((t) => t.kind === 'story').sort((a, b) => a.id - b.id);
-  const quick = rest.filter((t) => t.kind !== 'story' && t.psn_target == null && t.grade === 'bronze' && !t.missable);
-  const shortGrind = rest.filter((t) => t.psn_target != null && t.psn_target <= 20 && !story.includes(t));
-  const other = rest.filter((t) => !story.includes(t) && !quick.includes(t) && !shortGrind.includes(t));
-  const ordered = [
-    ...story.map((t) => ({ trophy: t, why: 'Story order — the next beat in the campaign.' })),
-    ...quick.map((t) => ({ trophy: t, why: 'Quick win — one action, no grind.' })),
-    ...shortGrind.map((t) => ({ trophy: t, why: `Short grind — PSN target ${t.psn_target}.` })),
-    ...other.map((t) => ({ trophy: t, why: t.psn_target != null ? `Long grind — PSN target ${t.psn_target}.` : 'Bigger job — save it for later.' })),
-  ];
-  return ordered.slice(0, limit || 8);
 }
